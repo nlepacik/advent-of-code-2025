@@ -31,47 +31,6 @@ struct connection {
 	}
 };
 
-set<struct point> graph;
-set<struct connection> connections;
-
-int part_one() {
-	vector<set<struct point>> circuits;
-	int counter = 0;
-	for (struct connection c : connections) {
-		if (++counter == 1000) break;
-		vector<int> added;
-		for (int i = 0; i < circuits.size(); i++) {
-			if (circuits[i].find(c.a) != circuits[i].end()) {
-				if (circuits[i].find(c.b) == circuits[i].end())
-					circuits[i].insert(c.b);
-				added.push_back(i);
-			} else if (circuits[i].find(c.b) != circuits[i].end()) {
-				if (circuits[i].find(c.a) == circuits[i].end())
-					circuits[i].insert(c.a);
-				added.push_back(i);
-			}
-		}
-		if (added.empty()) {
-			set<struct point> circuit;
-			circuit.insert(c.a);
-			circuit.insert(c.b);
-			circuits.push_back(circuit);
-		} else if (added.size() > 1) {
-			// need to merge two circuits
-			for (struct point p : circuits[added[1]]) {
-				circuits[added[0]].insert(p);
-			}
-			circuits[added[1]].clear();
-		}
-	}
-
-	sort(circuits.begin(), circuits.end(), [](const set<struct point>& a, const set<struct point>& b) {
-			return a.size() > b.size();
-			});
-
-	return circuits[0].size() * circuits[1].size() * circuits[2].size();
-}
-
 int main() {
 	ifstream file("input.txt");
 	string line;
@@ -85,8 +44,13 @@ int main() {
 		int c = stoi(line.substr(comma2 + 1));
 		points.push_back({a, b, c});
 	}
+
+	set<struct point> graph;
+	set<struct connection> connections;
+	vector<set<struct point>> circuits;
 	
 	for (int i = 0; graph.size() < points.size(); i++) {
+		// find the shortest connection
 		struct connection shortest;
 		shortest.distance = INT_MAX;
 		for (int p1 = 0; p1 < points.size(); p1++) {
@@ -104,9 +68,41 @@ int main() {
 		graph.insert(shortest.b);
 		connections.insert(shortest);
 
+		// update the circuits
+		vector<int> added;
+		for (int i = 0; i < circuits.size(); i++) {
+			if (circuits[i].find(shortest.a) != circuits[i].end()) {
+				if (circuits[i].find(shortest.b) == circuits[i].end())
+					circuits[i].insert(shortest.b);
+				added.push_back(i);
+			} else if (circuits[i].find(shortest.b) != circuits[i].end()) {
+				if (circuits[i].find(shortest.a) == circuits[i].end())
+					circuits[i].insert(shortest.a);
+				added.push_back(i);
+			}
+		}
+		if (added.empty()) {
+			set<struct point> circuit;
+			circuit.insert(shortest.a);
+			circuit.insert(shortest.b);
+			circuits.push_back(circuit);
+		} else if (added.size() > 1) {
+			// need to merge two circuits
+			for (struct point p : circuits[added[1]]) {
+				circuits[added[0]].insert(p);
+			}
+			circuits[added[1]].clear();
+		}
+
 		if (i == 999) {
-			cout << "Part 1: " << part_one() << endl;
-			break;
+			sort(circuits.begin(), circuits.end(), [](const set<struct point>& a, const set<struct point>& b) {
+					return a.size() > b.size();
+					});
+			cout << "Part 1: " << circuits[0].size() * circuits[1].size() * circuits[2].size() << endl;
+		}
+
+		if (graph.size() == points.size() && circuits[1].empty()) {
+			cout << "Part 2: " << (long)shortest.a.x * (long)shortest.b.x << endl;
 		}
 	}
 }
