@@ -1,14 +1,12 @@
+#include <climits>
 #include <iostream>
 #include <fstream>
 #include <queue>
+#include <stdexcept>
 #include <unordered_set>
+#include <z3++.h>
 
 using namespace std;
-
-struct presser {
-	int constant;
-	vector<int> vars;
-};
 
 struct machine {
 	vector<bool> lights;
@@ -45,110 +43,42 @@ struct machine {
 	}
 
 	long find_least_presses_joltages() {
+		z3::context c;
+		z3::optimize opt(c);
 
-		// put the buttons in a matrix and compute the rref
-		vector<vector<double>> matrix;
+		vector<z3::expr> presses;
+		for (int i = 0; i < buttons.size(); i++) {
+			presses.push_back(c.int_const(("x" + to_string(i)).c_str()));
+			opt.add(presses[i] >= 0);
+		}
+
 		for (int i = 0; i < joltages.size(); i++) {
-			matrix.push_back(vector<double>());
-		}
-		for (vector<bool> col : buttons) {
-			for (int i = 0; i < col.size(); i++) {
-				matrix[i].push_back(col[i]);
-			}
-		}
-		for (int i = 0; i < joltages.size(); i++) {
-			matrix[i].push_back(joltages[i]);
-		}
-
-		// ref
-		int pivot = 0;
-		unordered_set<int> free_vars;
-		for (int col = 0; col < matrix[0].size() - 1; col++) {
-
-			// find pivot
-			bool found = false;
-			for (int i = pivot; i < matrix.size(); i++) {
-				if (matrix[i][col] != 0) {
-					
-					// swap rows
-					vector<double> temp = matrix[i];
-					matrix[i] = matrix[pivot];
-					matrix[pivot] = temp;
-
-					found = true;
-					break;
+			z3::expr sum = c.int_val(0);
+			for (int j = 0; j < buttons.size(); j++) {
+				if (buttons[j][i] == true) {
+					sum = sum + presses[j];
 				}
 			}
-			if (!found) {
-				free_vars.insert(col);
-				continue;
-			}
-
-			// make the pivot 1
-			double factor = matrix[pivot][col];
-			for (int i = col; i < matrix[0].size(); i++) {
-				matrix[pivot][i] /= factor;
-			}
-
-			// zero out all other rows
-			for (int i = pivot + 1; i < matrix.size(); i++) {
-				double factor = matrix[i][col];
-				for (int j = 0; j < matrix[i].size(); j++) {
-					matrix[i][j] = matrix[i][j] - matrix[pivot][j] * factor;
-				}
-			}
-			
-			pivot++;
+			opt.add(sum == c.int_val(joltages[i]));
 		}
 
-		// rref
-		for (int row = matrix.size() - 1; row >= 0; row--) {
-			for (int col = 0; col < matrix[row].size() - 1; col++) {
-				if (matrix[row][col] == 0)
-					continue;
-				
-				for (int i = row - 1; i >= 0; i--) {
-					double factor = matrix[i][col];
-					for (int j = col; j < matrix[i].size(); j++) {
-						matrix[i][j] -= matrix[row][j] * factor;
-					}
-				}
-				break;
-			}
+		z3::expr total = c.int_val(0);
+		for (z3::expr& p : presses) {
+			total = total + p;
+		}
+		opt.minimize(total);
+
+		if (opt.check() != z3::sat) {
+			throw new runtime_error("unsat");
 		}
 
-		if (free_vars.size() == 0) {
-			int sum = 0;
-			for (int i = 0; i < matrix.size(); i++) {
-				sum += matrix[i][matrix[i].size() - 1];
-			}
-			return sum;
+		z3::model m = opt.get_model();
+		int result = 0;
+		for (z3::expr& p : presses) {
+			result += m.get_const_interp(p.decl()).get_numeral_int();
 		}
 
-		// need to solve for free variables
-		vector<struct presser> solution;
-		for (int row = 0; row < matrix.size(); row++) {
-			struct presser p;
-			p.constant = matrix[row][matrix[row].size() - 1];
-			for (int v : free_vars) {
-				p.vars.push_back(-matrix[row][v]);
-			}
-			solution.push_back(p);
-		}
-
-		for (struct presser p : solution) {
-			int var = 1;
-			cout << p.constant << " ";
-			for (int v : p.vars) {
-				cout << v << "x" << var << " ";
-				var++;
-			}
-			cout << endl;
-		}
-
-		// TODO: i have to sleep ill finish this tomorrow
-
-		return 0;
+		return result;
 	}
 };
 
@@ -190,11 +120,10 @@ int main() {
 	long count = 0;
 	long count2 = 0;
 	while (getline(file, line)) {
-		// cout << line << endl << endl;
 		struct machine m = parse_machine(line);
 		count += m.find_least_presses_lights();
-		// count2 += m.find_least_presses_joltages();
+		count2 += m.find_least_presses_joltages();
 	}
 	cout << "Part 1: " << count << endl;
-	// cout << "Part 2: " << count2 << endl;
+	cout << "Part 2: " << count2 << endl;
 }
